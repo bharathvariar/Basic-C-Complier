@@ -40,7 +40,7 @@ typedef enum
     ST_FOR,
     ST_DEFAULT,
     ST_READ,
-    ST_PRINT
+    ST_WRITE
 } stmt_symbol;
 
 struct c_symbol
@@ -95,11 +95,6 @@ struct for_stmt
     stnode_symbol *body;
 };
 
-struct default_st
-{
-    stnode_symbol *body;
-};
-
 struct statement
 {
     stmt_symbol type;
@@ -110,38 +105,54 @@ struct statement
     };
     struct statement *next;
 };
-
+// TODO
+// Implement parse_stmt
+// Implement lookup
+// implement run
+struct operator opstack[1024];
+int len2 = 0;
 enode_symbol *stack[1024];
 int len = 0;
+FILE *input;
+struct c_symbol curr;
+int _cstack[100];
+int _csp = 0;
+int osp, esp;
+int prec[] = {};
+int uprec[] = {};
+int dir[] = {};
+int udir[] = {};
 
+void error_(char *why)
+{
+    fprintf(stderr, "%s\n", why);
+    exit(1);
+}
 void push_enode(enode_symbol *e)
 {
     if (len == 1024)
-        die("E-node stack overflow");
+        error_("E-node stack overflow");
     stack[len++] = e;
 }
 
 enode_symbol *pop_enode(void)
 {
     if (len <= 0)
-        die("E-node stack underflow");
+        error_("E-node stack underflow");
     return stack[--len];
 }
-
-struct operator opstack[1024];
-int len2 = 0;
 
 void push_op(t_symbol op, int unary, int prec, int dir)
 {
     if (len2 == 1024)
-        die("Op stack overflow");
+        error_("Op stack overflow");
     opstack[len2++] = (struct operator){.op = op, .unary = unary, .prec = prec, .dir = dir};
 }
 
 struct operator pop_op(void)
 {
     if (len <= 0)
-        die("Op stack underflow");
+        error_("Op stack underflow");
     return opstack[--len2];
 }
 
@@ -158,12 +169,6 @@ int peek_prec(void)
         return -1;
     return opstack[len2 - 1].prec;
 }
-FILE *input;
-
-struct c_symbol _cur;
-int _cstack[100];
-int _csp = 0;
-
 int get(void)
 {
     if (_csp)
@@ -262,93 +267,23 @@ t_symbol lex(long long int *value, char *arr)
     }
     return T_UNKNOWN;
 }
-
 void startlex(FILE *fp)
 {
     input = fopen("input.txt", "r");
-    _cur.sym = lex(&_cur.value, _cur.arr);
+    curr.sym = lex(&curr.value, curr.arr);
 }
 
-int switchresult = 0;
-int switchmatch = 0;
-
-long long int evaluateExp(enode_symbol *e)
+int main(int argc, char *argv[])
 {
-    long long int l, r;
-    if (e->left && e->op != T_ASSIGN)
-        l = eval_expr(e->left);
-    if (e->right)
-        r = eval_expr(e->right);
-    switch (e->op)
+    FILE *fp = fopen("input.txt", "r");
+    stnode_symbol *head_p = NULL, *tail_p = NULL, *st;
+    if (argc > 1)
     {
-    case T_NUMBER:
-        return e->value;
-    case T_IDENTIFIER:
-        return e->var->value;
-    case T_PLUS:
-        return l + r;
-    case T_MINUS:
-        return l - r;
-    case T_MULT:
-        return l * r;
-    case T_DIV:
-        return l / r;
-    case T_LT:
-        return l < r;
-    case T_GT:
-        return l > r;
-    case T_EQUAL:
-        return l == r;
-    case T_NEQUAL:
-        return l != r;
-    case T_ASSIGN:
-        e->left->var->value = r;
-        return r;
-    default:
-        return 0;
-    }
-    return 0;
-}
-
-void run(stnode_symbol *st, int *cont, int *brk)
-{
-    stnode_symbol *n;
-
-    for (n = st; n != NULL; n = n->next)
-    {
-        switch (n->type)
+        if ((fp = fopen(argv[1], "r")) == NULL)
         {
-        case ST_EXPRESSION:
-            eval_expr(n->expr);
-            break;
-        case ST_PRINT:
-            printf("%ld\n", eval_expr(n->expr));
-            break;
-        case ST_READ:
-            printf("%ld\n", eval_expr(n->expr));
-            break;
-        case ST_FOR:
-            *brk = *cont = 0;
-            for (eval_expr(n->f->expr1); eval_expr(n->f->expr2); eval_expr(n->f->expr3))
-            {
-                run(n->f->body, cont, brk);
-                if (*brk)
-                    break;
-                if (*cont)
-                {
-                    *cont = 0;
-                    continue;
-                }
-            }
-            *brk = 0;
-            break;
+            perror("fopen");
+            exit(1);
         }
     }
-    return;
+    startlex(fp);
 }
-
-extern struct c_symbol _cur;
-char *tokstr[] = {
-    "+", "-", "*", "/", "<", ">", "==", "!=", "=", "(", ")",
-    "#", "var", "while", "for", "write",
-    "{", "}", ";", "EOI"};
